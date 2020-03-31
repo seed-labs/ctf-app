@@ -1,0 +1,238 @@
+/* body, html {
+  height: 100%;
+  width: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Open Sans;
+} */
+
+.app-container a {
+  padding: 10px;
+}
+
+.log pre {
+  padding: 10px;
+  margin: 10px;
+  background-color: #80808026;
+}
+
+.body-content {
+  margin: 0 1em;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  height: 100%;
+}
+
+.action-btn {
+  margin-left: 2px;
+}
+
+.right-panel {
+  position: fixed;
+  right: 15px;
+}
+
+.form-group {
+  margin: .5em;
+  border: solid 1px #333; 
+  padding: .5em;
+}
+
+.array-item-toolbox {
+  padding-right: 1em;
+  padding-top: .5em;
+}
+
+.array-item-add {
+  border-top: soild 2px #333;
+}
+
+.field-string, .field-integer, .field-boolean, .field-number {
+  border: none;
+  margin: .5em;
+  padding: 0;
+}
+
+legend {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 992px) {
+  .right-panel {
+      position: relative;
+      right: inherit;
+  }
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+::placeholder {
+  color: #ccc;
+}
+
+.rjsf > div > button[type="submit"],
+.rjsv > div:nth-child(2) {
+  visibility: hidden;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+.card, .card-expanded {
+  border: 2px solid #333;
+  padding: 2px;
+  font-size: 1em;
+  font-family: 'Courier New', Courier, monospace;
+  margin-top: 1em;
+}
+
+.session-info {
+  display: flex;
+  flex-flow: column;
+  max-height: calc(100% - 21px);
+}
+
+.card-expanded {
+  height: calc(100vh - 4em);
+}
+
+.title {
+  font-weight: bold;
+  border-left: 6px solid #333;
+  padding-left: 2px;
+}
+
+.subtitle {
+  font-weight: bold;
+}
+
+.session-info {
+  margin-top: .5em;
+}
+
+.server-info, .hints, .stats {
+  padding-top: .5em;
+  padding-left: 1em;
+  padding-bottom: .5em;
+}
+
+.flag {
+  border-top: 1px solid #333;
+  position: relative;
+  height: 250px;
+  display: flex;
+  justify-content: center;
+  flex: 0 0 250px;
+}
+
+.flag > .flag_placeholder {
+  width: 250px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0px auto;
+  text-align: center;
+  line-height: 250px;
+}
+
+.flag > .flag_img {
+  max-width: 100%;
+  max-height: 250px;
+}
+
+.container {
+  max-width: 100%;
+}
+
+.card-wrap-expanded {
+  margin-left: 1em;
+  margin-right: 1em;
+  width: 100%;
+  height: 1vh;
+}
+
+.console-wrap {
+  padding-top: .5em;
+  border-top: 1px solid #333;
+  flex: 0 1 auto;
+  overflow: scroll;
+}
+
+.console {
+  border: 1px solid #333;
+  padding: 5px;
+  height: 100%;
+}
+
+.hide {
+  display: none;
+}
+
+.session-card-panel {
+  display: inline;
+}
+
+.info-no-sessions {
+  margin: 1em;
+  border: 2px solid #333;
+  padding: 0.8em;
+  color: #333;
+}
+
+.hints{
+  height: 80px;
+  padding-right: 1em;
+}
+
+.log-output {
+  height: 458px;
+  background: #80808024;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.flag-captured {
+  background-color: #0080007a;
+}
+
+.title-large {
+  font-size: 1.5em;
+  font-weight: 600;
+  padding: 5px;
+}
+
+.error-table{
+  background-color: #ff000052;
+}
+
+.team-flag {
+  height: 200px;
+}

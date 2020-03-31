@@ -1,0 +1,38 @@
+version: '3'
+services:
+  frontent:
+    build: .
+    command: npm run start
+    depends_on:
+      - backend
+    volumes:
+      - ./src:/usr/src/app/src/
+    ports:
+      - "7081:7081"
+    environment:
+      API_HOST: localhost
+      API_PORT: 5000
+  backend:
+    build: .
+    restart: always
+    command: python server/run.py
+    depends_on:
+      - mysql
+    volumes:
+      - .:/usr/src/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: mysql://user:pass@ctf_new_mysql_1/ctf
+      ADMIN_TOKEN: secret
+      HOST_IP: 192.168.1.234
+  mysql:
+    image: mysql:8.0.18
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: my-secret-pw
+      MYSQL_DATABASE: ctf
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
