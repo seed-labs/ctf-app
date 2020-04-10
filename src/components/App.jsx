@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import socketIOClient from "socket.io-client";
 
 export default class AppWrapper extends React.Component {
   constructor() {

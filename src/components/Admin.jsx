@@ -220,7 +220,7 @@ class Admin extends React.Component {
 
           for(var i=0; i<this.state.sessions.length; i++) {
             if(this.state.sessions[i].id == res.id) {
-              this.state.sessions[i].dropped = true
+              this.state.sessions[i].running = false
             }
           }
 
@@ -292,10 +292,10 @@ class Admin extends React.Component {
                                   <th>#cap</th>
                                   <th>Action</th>
                               </tr>
-                              {this.state.sessions.filter(session => !session.dropped).map(session => {
+                              {this.state.sessions.filter(session => session.running).map(session => {
                                 var this_class = session.error ? 'error-table' : '';
                                 return (<tr key={session.id} className="session-list-item">
-                                  <td className={this_class} onClick={() => this.showError(session)}><Link to={`/t/${session.team_id}/log/${session.id}`}>{session.name}</Link></td>
+                                  <td className={this_class} onClick={() => this.showError(session)}><Link to={`/t/${session.team_id}/log/${session.id}`}>{session.team.name}</Link></td>
                                   <td><code>{session.container_id}</code></td>
                                   <td>{session.level}</td>
                                   <td>{session.port}</td>

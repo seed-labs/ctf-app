@@ -14,6 +14,7 @@ services:
       API_PORT: 5000
   backend:
     build: .
+    container_name: ctf_app
     restart: always
     command: python server/run.py
     depends_on:
@@ -24,11 +25,23 @@ services:
     ports:
       - "5000:5000"
     environment:
-      DATABASE_URL: mysql://user:pass@ctf_new_mysql_1/ctf
+      DATABASE_URL: mysql://user:pass@ctf_mysql/ctf
       ADMIN_TOKEN: secret
       HOST_IP: 192.168.1.234
+  swagger_ui:
+    container_name: ctf_swagger_ui
+    image: swaggerapi/swagger-ui
+    depends_on:
+      - backend
+    ports:
+      - 80:8080
+    volumes:
+      - ./:/ui
+    environment:
+      SWAGGER_JSON: /ui/swagger.json
   mysql:
     image: mysql:8.0.18
+    container_name: ctf_mysql
     command: --default-authentication-plugin=mysql_native_password
     restart: always
     environment:

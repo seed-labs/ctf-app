@@ -1,4 +1,5 @@
 from app import db
+from sqlalchemy.orm import deferred
 
 class Team(db.Model):
     """
@@ -11,7 +12,7 @@ class Team(db.Model):
     name = db.Column(db.String(100), unique=True)
     description = db.Column(db.String(200))
     sessions = db.relationship("Session", back_populates="team")
-    flag = db.Column(db.LargeBinary(length=1024 * 1024))
+    flag = deferred(db.Column(db.LargeBinary(length=1024 * 1024)))
 
     def __repr__(self):
         return '<Team: {}>'.format(self.name)

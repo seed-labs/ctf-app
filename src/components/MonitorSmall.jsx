@@ -79,7 +79,7 @@ class Monitor extends React.Component {
   }
 
   render() {
-    var running_sessions = this.state.sessions.filter(session => !session.dropped);
+    var running_sessions = this.state.sessions.filter(session => session.running);
     var some_expanded = running_sessions.some(session => session.expanded);
 
     if (running_sessions.length > 0) return <div className="box container">

@@ -60,7 +60,7 @@ class SessionCard extends React.Component {
         if(!session.flag_status) {
             flag_el = <div className="flag_placeholder">Flag Not Captured Yet</div>;
         } else {
-            if(this.state.team.flag != '') {
+            if(this.state.team.flag) {
                 flag_el = <img className="flag_img" src={this.state.team.flag}></img>
             } else {
                 flag_el = <img className="flag_img" src={`src/assets${session.flag_url}`}></img>
@@ -72,12 +72,12 @@ class SessionCard extends React.Component {
         if(this.props.small) {
             return <div className={session.flag_status ? 'card flag-captured': 'card'}>
                         <div className="title-large">
-                            <Link to={`/t/${session.team_id}/log/${session.id}`}>{session.name}/{session.id}</Link>
+                            <Link to={`/t/${session.team_id}/log/${session.id}`}>{session.team.name}/{session.team.id}</Link>
                         </div>
                     </div>;
         } else {
             return <div className={session.expanded ? 'card-expanded': 'card'}>
-            <div className="title"><Link to={`/t/${session.team_id}/log/${session.id}`}>{session.name}/{session.id}</Link></div>
+            <div className="title"><Link to={`/t/${session.team_id}/log/${session.id}`}>{session.team.name}/{session.team.id}</Link></div>
                 <div className="session-info">
                     <div className="server-info-wrap">
                         <div className="server-info">
