@@ -5,22 +5,31 @@ from sqlalchemy import exc
 from flask_migrate import Migrate
 from flask import request
 from flask_socketio import SocketIO, emit
-import docker
-import random
-import time
-import eventlet
-from eventlet.semaphore import Semaphore
+
 import os
 import random
 import string
 import socket
+import random
+import time
+import docker
+import json
+import yaml
+
+import eventlet
+from eventlet.semaphore import Semaphore
+
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from apispec_webframeworks.flask import FlaskPlugin
 from pprint import pprint
 from marshmallow import Schema, fields
-import json
-import yaml
+
+from .routes.TeamAPI import team_api, createTeam, getTeams, manageTeam, fetchTeamDetails
+from .routes.SessionAPI import session_api, teamSessionFetch, teamSessionDelete, teamSessionClearFlag, getSessionAnswer
+from .routes.FormAPI import form_api, getSchema, getTeamSchema
+
+from .schemas import TeamParameter, SessionParameter, TokenParameter, TeamSchema, SessionSchema, SessionPublicSchema
 
 OPENAPI_SPEC = """
 openapi: 3.0.2
@@ -31,7 +40,8 @@ servers:
     port:
       enum:
       - '5000'
-      - '8080'
+      - '80'
+      - '443'
       default: '5000'
 """
 
@@ -50,56 +60,6 @@ spec = APISpec(
 # validate_spec(spec)
 api_key_scheme = {"type": "apiKey", "in": "header", "name": "token"}
 spec.components.security_scheme("token", api_key_scheme)
-
-# Schema
-class TeamParameter(Schema):
-    team_id = fields.Int()
-
-class SessionParameter(Schema):
-    session_id = fields.Int()
-
-class TokenParameter(Schema):
-    token = fields.Str(required=True)
-
-class TeamSchema(Schema):
-    description = fields.Str()
-    flag = fields.Str()
-    id = fields.Int(dump_only=True)
-    name = fields.Str()
-
-class SessionSchema(Schema):
-    id = fields.Int(dump_only=True)
-    team_id = fields.Int(dump_only=True)
-    team = fields.Nested(TeamSchema, only=("id", "name")) 
-    status = fields.Str()
-    level = fields.Int()
-    port = fields.Int()
-    container_id = fields.Str()
-    trials = fields.Int()
-    successes = fields.Int()
-    hints = fields.Str()
-    running = fields.Boolean()
-    error = fields.Boolean()
-    secret = fields.Str()
-    ans = fields.Str()
-    flag_url = fields.Str()
-    flag_status = fields.Boolean()
-
-class SessionPublicSchema(Schema):
-    id = fields.Int(dump_only=True)
-    team_id = fields.Int(dump_only=True)
-    team = fields.Nested(TeamSchema, only=("id", "name")) 
-    status = fields.Str()
-    level = fields.Int()
-    port = fields.Int()
-    container_id = fields.Str()
-    trials = fields.Int()
-    successes = fields.Int()
-    hints = fields.Str()
-    running = fields.Boolean()
-    error = fields.Boolean()
-    flag_url = fields.Str()
-    flag_status = fields.Boolean()
 
 # Initialize the schema objects
 team_schema = TeamSchema()
@@ -153,174 +113,27 @@ def create_app():
     with app.app_context():
         # db.drop_all()
         db.create_all()                                     # create all tables for the models
+
+    app.config["team_api.db"] = db
+    app.config["team_api.models"] = models
+    app.config["team_api.teams_schema"] = teams_schema
+    app.config["team_api.team_schema"] = team_schema
+
+    app.config["session_api.db"] = db
+    app.config["session_api.models"] = models
+    app.config["session_api.session_schema"] = session_schema
+    app.config["session_api.session_public_schema"] = session_public_schema
+
+    app.config["form_api.db"] = db
+    app.config["form_api.models"] = models
+    
     ##
     # API routes
     ##
-    @app.route('/api/team', methods=['GET', 'POST'])
-    def createTeam():
-        """Team API
-        ---
-        get:
-            description: Fetch all the teams
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'TeamSchema'
-                404:
-                    description: Invalid token
-            security:
-                - api_key: []
-        post:
-            description: Create a new Team
-            parameters:
-                - in: header
-                  schema: 'TokenParameter'
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'TeamSchema'
-                404:
-                    description: Invalid token
-                400:
-                    description: Invalid name
-                400:
-                    description: Invalid description
-                500:
-                    description: Team name already used
-                500:
-                    description: SQL error
-            security:
-                - api_key: []
-        """
-        if request.method == 'POST':
-            req = request.get_json()
-            if (not 'token' in req or req['token'] != admin_token):     # check for admin token
-                return jsonify({"error": "Invalid token"}), 404
+    app.register_blueprint(team_api)
+    app.register_blueprint(session_api)
+    app.register_blueprint(form_api)
 
-            if (not 'name' in req or req['name'] == None):     # check for admin token
-                return jsonify({"error": "Invalid name"}), 400
-
-            if (not 'description' in req or req['description'] == None):     # check for admin token
-                return jsonify({"error": "Invalid description"}), 400
-
-            if (not 'file' in req or req['file'] == ''):                # check if the file is attached to request
-                team = models.Team(name=req['name'], description=req['description'])
-            else:
-                team = models.Team(name=req['name'], description=req['description'], flag=req['file'].encode())
-
-            try:
-                db.session.add(team)                                        # create a new team
-                db.session.commit()
-            except exc.IntegrityError as e:
-                print(e)
-                return jsonify({"error": "Team name already used"}), 500
-            except exc.SQLAlchemyError as e:
-                print(e)
-                if e.args[0].find('Data too long for column \'flag\' ') != -1:
-                    return jsonify({"error": "Flag file is bigger than 10MB"}), 500    
-                return jsonify({"error": "SQL error"}), 500
-
-            return jsonify(team_schema.dump(team))
-        else:
-            if (not 'token' in request.args or request.args['token'] != admin_token):     # check for admin token
-                return jsonify({"error": "Invalid token"}), 404
-
-            teams_output = db.session.query(models.Team)                      # fetch all the teams from db
-            return jsonify({'teams': teams_schema.dump(teams_output)})
-
-    @app.route('/api/team/<team_id>', methods=['PUT', 'DELETE'])
-    def team(team_id):
-        """Manage team details
-        ---
-        delete:
-            parameters:
-                - in: path
-                  schema: 'TeamParameter'
-                - in: header
-                  schema: 'TokenParameter'
-            description: Delete the team
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'TeamSchema'
-                404:
-                    description: Invalid token
-                400:
-                    description: Invalid team id
-                400:
-                    description: Invalid team
-            security:
-                - api_key: []
-        """
-        team_id = int(team_id)
-        if not isinstance(team_id, int):                        # check if team id is found and is int
-            return jsonify({"error": "Invalid team id"}), 400
-        
-        if (not 'token' in request.args or request.args['token'] != admin_token):   # check for admin token
-            return jsonify({"error": "Invalid token"}), 404
-
-        if request.method == 'PUT':                             # TODO - Add update team mode in future
-            return jsonify({'team_id': team_id})
-        elif request.method == 'DELETE':                        # Remove a team
-            team = models.Team.query.get(team_id)
-
-            if team is None:
-                return jsonify({'error': 'Invalid team'}), 400
-
-            team_sessions = models.Session.query.filter_by(team_id=team_id)  # Query all the session for this team
-            for session in team_sessions:
-                if session.container_id:
-                    try:
-                        ct = docker_client.containers.get(session.container_id)  # stop the docker container for the sessions found
-                        ct.stop()
-                    except docker.errors.APIError:
-                        print("Error - Container not found")
-
-                if session.running == True:                             # update status to not running
-                    session.running = False
-                    db.session.add(session)
-
-            db.session.delete(team)
-            db.session.commit()
-            return jsonify(team_schema.dump(team))
-
-    @app.route('/api/team/<team_id>', methods=['GET'])
-    def fetchTeamDetails(team_id):
-        """fetch team details
-        ---
-        get:
-            parameters:
-                - in: path
-                  schema: 'TeamParameter'
-            description: Fetch the team information
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'TeamSchema'
-                400:
-                    description: Invalid team id
-                400:
-                    description: Invalid team
-        """
-        team_id = int(team_id)
-        if not isinstance(team_id, int):                        # check if team id is found and is int
-            return jsonify({"error": "Invalid team id"}), 400
-
-        team = models.Team.query.get(team_id)
-
-        if team is None:
-            return jsonify({'error': 'Invalid team'}), 400
-
-        return jsonify(team_schema.dump(team))
-            
     @app.route('/api/get_sessions_public', methods=['GET'])
     def getSessionsListPublic():
         """Fetch currently running sessions - public api
@@ -383,163 +196,6 @@ def create_app():
             sessions.append(row)
         db.session.commit()
         return jsonify({'sessions': session_many_schema.dump(sessions)})
-
-    @app.route('/api/bof_form/get_schema', methods=['GET'])
-    def getSchema():
-        """Fetch the admin form for creating the BOF session
-        ---
-        get:
-            description: Fetch the admin form for creating BOF session
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionSchema'
-        """
-        formFields = {
-            "$schema": "http://json-schema.org/draft-04/schema#",
-            "$id": "http://json-schema.org/draft-04/schema#",
-            "title": "Buffer Overflow Session Configuration",
-            "type": "object",
-            "properties": {
-                "level": {
-                "type": "integer",
-                "enum": [
-                    1,
-                    2,
-                    3,
-                    4
-                ],
-                "description": "Difficulty level for the session.",
-                "default": 1
-                },
-                "team": {
-                    "type": "integer",
-                    "enum": [],
-                    "description": "Select a Team"
-                },
-                "buffer_size": {
-                "type": "integer",
-                "description": "The size of buffer."
-                },
-            },
-            "required": [
-                "level",
-                "host",
-                "buffer_size",
-                "team"
-            ],
-            "dependencies": {
-                "level": {
-                "oneOf": [
-                    {
-                    "properties": {
-                        "level": {
-                        "enum": [
-                            1,
-                            4
-                        ]
-                        }
-                    }
-                    },
-                    {
-                    "properties": {
-                        "level": {
-                        "enum": [
-                            2
-                        ]
-                        },
-                        "buffer_high": {
-                        "type": "integer",
-                        "description": "The value to be added to the buffer size: the upper bound of the range."
-                        },
-                        "buffer_low": {
-                        "type": "integer",
-                        "description": "The value to be deducted from the buffer size: the lower bound of the range"
-                        }
-                    },
-                    "required": [
-                        "buffer_high",
-                        "buffer_low"
-                    ]
-                    },
-                    {
-                    "properties": {
-                        "level": {
-                        "enum": [
-                            3
-                        ]
-                        },
-                        "buffer_high": {
-                        "type": "integer",
-                        "description": "The value to be added to the buffer size: the upper bound of the range."
-                        },
-                        "buffer_low": {
-                        "type": "integer",
-                        "description": "The value to be deducted from the buffer size: the lower bound of the range"
-                        },
-                        "address_mask": {
-                        "type": "string",
-                        "description": "The address mask."
-                        }
-                    },
-                    "required": [
-                        "buffer_high",
-                        "buffer_low",
-                        "address_mask"
-                    ]
-                    }
-                ]
-                }
-            }
-            }
-
-        # add the list of teams to the form as dropdown
-        teams = db.session.query(models.Team)
-        for team in teams:
-            formFields['properties']['team']['enum'].append(team.name)
-
-        return jsonify(formFields)
-
-    @app.route('/api/team_form/get_schema', methods=['GET'])
-    def getTeamSchema():
-        """Fetch the admin form for creating the team
-        ---
-        get:
-            description: Fetch the admin form for creating the team
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionSchema'
-        """
-        return jsonify({
-            "$schema": "http://json-schema.org/draft-04/schema#",
-            "$id": "http://json-schema.org/draft-04/schema#",
-            "title": "Team Settings",
-            "type": "object",
-            "properties": {
-                "name": {
-                "type": "string",
-                "description": "The name of the team"
-                },
-                "description": {
-                "type": "string",
-                "description": "Team description"
-                },
-                "file": {
-                "type": "string",
-                "format": "data-url",
-                "title": "flag"
-                },
-            },
-            "required": [
-                "name",
-                "description",
-            ],
-            })
 
     @app.route('/api/team/<team_id>/session', methods=['POST'])
     def startTeamSession(team_id):
@@ -678,55 +334,9 @@ def create_app():
         eventlet.greenthread.spawn(watchSocketStatus, { 'container_id': team_session.id }, models)
         
         return jsonify(session_schema.dump(team_session))
-    
-    @app.route('/api/team/session/<session_id>', methods=['DELETE'])
-    def teamSessionDelete(session_id):
-        """Delete the session
-        ---
-        delete:
-            parameters:
-                - in: header
-                  schema: 'TokenParameter'
-                - in: path
-                  schema: 'SessionParameter'
-            description: Delete the session
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionSchema'
-                404:
-                    description: Invalid token
-                400:
-                    description: Invalid session
-            security:
-                - api_key: []
-        """
-        if (not 'token' in request.args or request.args['token'] != admin_token):   # check for admin token
-            return jsonify({"error": "Invalid token"}), 404
-
-        if request.method == 'DELETE':
-            team_session = models.Session.query.get(session_id)
-
-            if team_session is None:
-                return jsonify({'error': 'Invalid session'}), 400
-
-            try:
-                # stop the docker container
-                ct = docker_client.containers.get(team_session.container_id)
-                ct.stop()
-            except docker.errors.APIError:
-                print("Error - Container not found")
-
-            if team_session.running == True:
-                team_session.running = False
-                db.session.add(team_session)
-                db.session.commit()
-            return jsonify(session_schema.dump(team_session))
 
     @app.route('/api/team/session/<session_id>/docker', methods=['GET'])
-    def restartDocker(session_id):
+    def teamSessionRestartDocker(session_id):
         """Restart the docker container for the current session
         ---
         get:
@@ -770,123 +380,23 @@ def create_app():
             team_session.running = True
             team_session.error = False
             team_session.status = ""
-            team_session.port = port_assigned
+            team_session.port = int(port_assigned)
+
+            # restart the docker sesssion 
+            sem.acquire()
+            if team_session.id in StdErrLogIterator:
+                del StdErrLogIterator[team_session.id] 
+
+            if team_session.id in StdOutLogIterator:
+                del StdOutLogIterator[team_session.id] 
+            sem.release()
+
+            eventlet.greenthread.spawn(watchStdErrLogs, { 'container_id': team_session.id }, models)
+            eventlet.greenthread.spawn(watchLogs, { 'container_id': team_session.id }, models)
+
             db.session.add(team_session)
             db.session.commit()
             return jsonify(session_schema.dump(team_session))
-
-    @app.route('/api/team/session/<session_id>/flag', methods=['DELETE'])
-    def teamSessionClearFlag(session_id):
-        """Clear the session flag details
-        ---
-        delete:
-            parameters:
-                - in: path
-                  schema: 'SessionParameter'
-            description: Clear the session flag
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionPublicSchema'
-                400:
-                    description: Invalid session
-        """
-        if request.method == 'DELETE':
-            team_session = models.Session.query.get(session_id)     # fetch the session from db
-
-            if team_session is None:
-                return jsonify({'error': 'Invalid session'}), 400
-
-            team_session.flag_status = False                        # reset the flag status
-            db.session.add(team_session)
-            db.session.commit()
-            return jsonify(session_public_schema.dump(team_session))
-            
-    @app.route('/api/team/session/<session_id>', methods=['GET'])
-    def teamSessionFetch(session_id):
-        """Fetch the session details
-        ---
-        get:
-            parameters:
-                - in: path
-                  schema: 'SessionParameter'
-            description: Fetch the session
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionPublicSchema'
-                400:
-                    description: Invalid session
-        """
-        team_session = models.Session.query.get(session_id)     # fetch the session from db
-        if team_session is not None and team_session.team is not None and team_session.team.name is not None:
-            return jsonify(session_public_schema.dump(team_session))
-        else:
-            return jsonify({"error": "Invalid session"}), 400
-
-    @app.route('/api/team/session/<session_id>/answer', methods=['GET'])
-    def getSessionAnswer(session_id):
-        """Fetch the session answer
-        ---
-        get:
-            parameters:
-                - in: header
-                  schema: 'TokenParameter'
-                - in: path
-                  schema: 'SessionParameter'
-            description: Fetch the session answer
-            responses:
-                200:
-                    description: successful
-                    content:
-                        application/json:
-                            schema: 'SessionSchema'
-                404:
-                    description: Invalid token
-                400:
-                    description: Invalid session
-            security:
-                - api_key: []
-        """
-        if (not 'token' in request.args or request.args['token'] != admin_token):   # check for admin token
-            return jsonify({"error": "Invalid token"}), 404
-        team_session = models.Session.query.get(session_id)     # fetch the session from db
-        
-        if team_session is None:
-            return jsonify({'error': 'Invalid session'}), 400
-
-        if team_session.ans is None and team_session.trials > 0:    # fetch the answer value
-            print('ans is null')
-            try:
-                ct = docker_client.containers.get(team_session.container_id)
-                log_data = ct.logs(stdout=False, stderr=True)       # fetch the docker container log
-                for server_line in log_data.decode('unicode_escape').splitlines():      # parse the control log
-                    if '#' not in server_line: 
-                        print('Session: {}: unexpected respond from CTF server: {}'.format(session_id, server_line))
-                    [msg_type, msg] = server_line.split('#')                            # fetch the type of message and message value
-
-                    if msg_type == 'err':
-                        print('Session {}: Server error: {}'.format(session_id, msg))
-                        break
-
-                    if msg_type == 'hints':
-                        team_session.hints = msg
-                        print('Session {}: Hints updated'.format(session_id))
-
-                    if msg_type == 'ans':
-                        team_session.ans = msg
-                        print('Session {}: Answer updated'.format(session_id))
-                db.session.add(team_session)
-                db.session.commit()
-            except docker.errors.APIError:
-                print("Error - docker api not working")
-
-        return jsonify(session_schema.dump(team_session))
-
     ##
     # View route
     ##
@@ -999,26 +509,53 @@ def create_app():
             with app.app_context():
                 while 1:
                     ts = models.Session.query.get(message['container_id'])
-                    if ts is not None and ts.container_id != "null" and ts.running == True:         # check if the session is running
-                        # print('socket-status - starting: {} - Port: {}'.format(message['container_id'], ts.port))
-                        container_instance = docker_client.containers.get(ts.container_id)
+                    if ts is not None and ts.container_id != "null":
+                        if ts.running == True:         # check if the session is running
+                            # print('socket-status - starting: {} - Port: {}'.format(message['container_id'], ts.port))
+                            try:
+                                container_instance = docker_client.containers.get(ts.container_id)                 # fetch the docker container status
+                                port_assigned = container_instance.ports['9090/tcp'][0]['HostPort']                 # fetch port number
 
-                        # send socket data to the container
-                        try:
-                            clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            clientsocket.connect((HOST_IP, ts.port))
-                            clientsocket.send(b'test\n')
-                        except socket.error as e:
-                            ts.error = True
-                            ts.status = "Docker container not responding"
-                            db.session.add(ts)
-                            db.session.commit()
-                            if(e.errno == 60):
-                                print("Error socket timeout: ", e)
-                            else:
-                                print("Issue: ", e)
+                                # check the port number with db port mapped
+                                if int(port_assigned) != ts.port:
+                                    print('socket-status - port not matching: {} - Port: {}'.format(message['container_id'], ts.port))
+                                    ts.port = int(port_assigned)
+                                    db.session.add(ts)
+                                    db.session.commit()
+                            except docker.errors.NotFound:                                          # capture the exception when the docker container is missing from the system
+                                break
+                            
+                            currentStatusFlag = False   # check the status of connection
+
+                            # send socket data to the container
+                            try:
+                                clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                                clientsocket.connect((HOST_IP, ts.port))
+                                clientsocket.send(b'ping\n')
+                            except socket.error as e:
+                                currentStatusFlag = True    # connection failed
+                                if(e.errno == 60):
+                                    print("Error socket timeout: ", e)
+                                else:
+                                    print("Issue: ", e)
+                            
+                            # change in status
+                            if currentStatusFlag == True and ts.error == False:
+                                ts.error = True
+                                ts.status = "Docker container not responding"
+                                db.session.add(ts)
+                                db.session.commit()
+                            elif currentStatusFlag == False and ts.error == True:
+                                ts.error = False
+                                ts.status = ""
+                                db.session.add(ts)
+                                db.session.commit()
+                            # print('socket-status - completed loop: {} - Port: {}'.format(message['container_id'], ts.port))
+                        else:
+                            print('socket-status - skipping: {} - Port: {}'.format(message['container_id'], ts.port))
                     else:
-                        print('socket-status - skipping: {} - Port: {}'.format(message['container_id'], ts.port))
+                        print('socket-status - stopping: {} - Port: {}'.format(message['container_id'], ts.port))
+                        break
                     eventlet.sleep(seconds=60)
         else:
             sem.release()   # release the lock on the semaphore
@@ -1031,10 +568,10 @@ def create_app():
     def test_disconnect():
         print('Client disconnected')
 
-
     with app.test_request_context():
         spec.path(view=createTeam)
-        spec.path(view=team)
+        spec.path(view=getTeams)
+        spec.path(view=manageTeam)
         spec.path(view=fetchTeamDetails)
         spec.path(view=getSessionsListPublic)
         spec.path(view=getSessionsList)
@@ -1042,12 +579,11 @@ def create_app():
         spec.path(view=getTeamSchema)
         spec.path(view=startTeamSession)
         spec.path(view=teamSessionDelete)
-        spec.path(view=restartDocker)
+        spec.path(view=teamSessionRestartDocker)
         spec.path(view=teamSessionClearFlag)
         spec.path(view=teamSessionFetch)
         spec.path(view=getSessionAnswer)
 
-    # pprint(spec.to_dict())
     with open('swagger.json', 'w') as f:
         json.dump(spec.to_dict(), f)
 

@@ -30,7 +30,7 @@ class Session(db.Model):
     status = db.Column(db.String(100))
     level = db.Column(db.Integer)
     port = db.Column(db.Integer)
-    container_id = db.Column(db.String(100), unique=True)
+    container_id = db.Column(db.String(100))
     trials = db.Column(db.Integer)
     successes = db.Column(db.Integer)
     hints = db.Column(db.String(100))
