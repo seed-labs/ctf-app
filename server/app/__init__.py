@@ -77,13 +77,8 @@ spec.components.schema("Session", schema=SessionSchema)
 spec.components.schema("SessionPublic", schema=SessionPublicSchema)
 
 admin_token = os.environ["ADMIN_TOKEN"]     # fetch the admin token
-print("Debug: admin_token: ", admin_token)
-
 HOST_IP = os.environ["HOST_IP"]     # fetch the host ip
-print("Debug: HOST_IP: ", HOST_IP)
-
 DATABASE_URL = os.environ["DATABASE_URL"]
-print("Debug: DATABASE_URL: ", DATABASE_URL)
 
 db = SQLAlchemy()   # initialize the db client
 
@@ -102,6 +97,10 @@ def create_app():
     '''Main wrapper for app creation'''
     app = Flask(__name__, static_folder='../../build')      # static folder where the frontend application is hosted from
     CORS(app)                                               # enable cross origin HTTP requests
+
+    app.logger.info("admin_token: ", admin_token)
+    app.logger.info("HOST_IP: ", HOST_IP)
+    app.logger.info("DATABASE_URL: ", DATABASE_URL)
 
     # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
@@ -185,12 +184,12 @@ def create_app():
                 else:                                                               # update the session with the container not running stats
                     row.error = True
                     row.status = "Docker container not running"
-                    print("Docker container not running: ", row.id)
+                    app.logger.info("Docker container not running: ", row.id)
                     db.session.add(row)
             except docker.errors.NotFound:                                          # capture the exception when the docker container is missing from the system
                 row.error = True
                 row.status = "Docker container not found"
-                print("Docker container not found: ", row.id)
+                app.logger.info("Docker container not found: ", row.id)
                 db.session.add(row)
 
             sessions.append(row)
@@ -307,20 +306,20 @@ def create_app():
 
             port_assigned = ct.ports['9090/tcp'][0]['HostPort']     # fetch the port number of the exposed port in the container
         except docker.errors.BuildError as err:     # build error during the image build process
-            print(err)
-            print("Error- Build Image")
+            app.logger.info(err)
+            app.logger.info("Error- Build Image")
             return jsonify({"error": "error starting bof server - code: 1"}), 500
         except docker.errors.APIError as err:       # unable to connect to docker api
-            print(err)
-            print("Error- API Error")
+            app.logger.info(err)
+            app.logger.info("Error- API Error")
             return jsonify({"error": "error starting bof server - API Error - code: 2"}), 500
         except docker.errors.ImageNotFound as err:  # unable to find the BOF docker image
-            print(err)
-            print("Error- Image Not Found")
+            app.logger.info(err)
+            app.logger.info("Error- Image Not Found")
             return jsonify({"error": "error starting bof server - code: 3"}), 500
         except docker.errors.ContainerError as err:  # unable to start the container
-            print(err)
-            print("Error- Container error")
+            app.logger.info(err)
+            app.logger.info("Error- Container error")
             return jsonify({"error": "error starting bof server - code: 4"}), 500
             
         team_session.running = True
@@ -372,7 +371,7 @@ def create_app():
                 ct = docker_client.containers.get(team_session.container_id)
                 ct.restart()                                                        # restart the docker container
             except docker.errors.APIError:
-                print("Error - Container not found")
+                app.logger.info("Error - Container not found")
 
             ct.reload()             # required to get auto-assigned ports, not needed if it was an already running container
             port_assigned = ct.ports['9090/tcp'][0]['HostPort']                     # fetch the newly assigned port number
@@ -413,22 +412,22 @@ def create_app():
 
     def watchLogs(message, models):
         '''Eventlet function to watch the stdout logs from the container '''
-        # print('message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
+        # app.logger.debug('message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
         sem.acquire()   # acquire the lock on the semaphore
         if message is not None and message['container_id'] is not None and isinstance(message['container_id'], int) and message['container_id'] not in StdOutLogIterator:
             with app.app_context():
                 ts = models.Session.query.get(message['container_id'])
                 if ts is not None and ts.container_id != "null":
-                    # print('starting emit-listner: {}'.format(message['container_id']))
+                    app.logger.debug('starting emit-listner: {}'.format(message['container_id']))
                     ct = docker_client.containers.get(ts.container_id)
                     StdOutLogIterator[message['container_id']] = ct.attach(stream=True, stdout=True, stderr=False)   # listen to the container log
                     sem.release()   # release the lock on the semaphore
 
                     eventName = 'emit_log_' + str(message['container_id'])
                     for line in StdOutLogIterator[message['container_id']]:         # iterate over the lines in the log
-                        # print('emit_log_t_{} -'.format(message['container_id']))
+                        # app.logger.debug('emit_log_t_{} -'.format(message['container_id']))
                         if(line.decode('unicode_escape').find(ts.secret) != -1):    # check the secret value with the log
-                            # print('found secret')
+                            # app.logger.debug('found secret')
                             ts.successes = models.Session.successes + 1
                             ts.flag_status = True
                             db.session.add(ts)
@@ -445,28 +444,28 @@ def create_app():
 
     def watchStdErrLogs(message, models):
         '''Eventlet function to watch the stderr logs from the container '''
-        # print('message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
+        # app.logger.debug('message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
         sem.acquire()   # acquire the lock on the semaphore
         if message is not None and message['container_id'] is not None and isinstance(message['container_id'], int) and message['container_id'] not in StdErrLogIterator:
             with app.app_context():
                 ts = models.Session.query.get(message['container_id'])
                 if ts is not None and ts.container_id != "null":
-                    # print('starting emit-listner-err-log: {}'.format(message['container_id']))
+                    app.logger.debug('starting emit-listner-err-log: {}'.format(message['container_id']))
                     ct1 = docker_client.containers.get(ts.container_id)
                     StdErrLogIterator[message['container_id']] = ct1.attach(stream=True, stdout=False, stderr=True)   # listen to the container log
                     sem.release()   # release the lock on the semaphore
 
                     eventName = 'emit_log_' + str(message['container_id'])
                     for line in StdErrLogIterator[message['container_id']]:         # iterate over the lines in the log
-                        # print('emit_log_err_{}: {}'.format(message['container_id'], line.decode('unicode_escape')))
+                        # app.logger.debug('emit_log_err_{}: {}'.format(message['container_id'], line.decode('unicode_escape')))
                         for server_line in line.decode('unicode_escape').splitlines():     # parse the control log
                             session_id = message['container_id']
                             if '#' not in server_line: 
-                                print('Session: {}: unexpected respond from CTF server: {}'.format(session_id, server_line))
+                                app.logger.debug('Session: {}: unexpected respond from CTF server: {}'.format(session_id, server_line))
                             [msg_type, msg] = server_line.split('#')                # fetch the type of message and message value
 
                             if msg_type == 'err':
-                                print('Session {}: Server error: {}'.format(session_id, msg))
+                                app.logger.debug('Session {}: Server error: {}'.format(session_id, msg))
                                 break
 
                             if msg_type == 'trial':
@@ -475,32 +474,32 @@ def create_app():
                                 db.session.add(ts)
                                 db.session.commit()
                                 socketio.emit(eventName, {'count': (ts.trials), 'timestamp': time.time()})  # send the count information
-                                # print('Session {}: Trial received from {}'.format(session_id, msg))
+                                # app.logger.debug('Session {}: Trial received from {}'.format(session_id, msg))
 
                             if msg_type == 'hints':
-                                # print('test hints: ', msg)
+                                # app.logger.debug('test hints: ', msg)
                                 ts.hints = msg      # update the hints
                                 db.session.add(ts)
                                 db.session.commit()
                                 eventName = 'emit_refresh_' + str(message['container_id'])
                                 socketio.emit(eventName, {'refresh_data': True, 'timestamp': time.time()})
-                                print('Session {}: Hints updated'.format(session_id))
+                                app.logger.info('Session {}: Hints updated'.format(session_id))
 
                             if msg_type == 'ans':
-                                # print('test ans: ', msg)
+                                # app.logger.debug('test ans: ', msg)
                                 ts.ans = msg        # update the answer
                                 db.session.add(ts)
                                 db.session.commit()
                                 eventName = 'emit_refresh_' + str(message['container_id'])
                                 socketio.emit(eventName, {'refresh_data': True, 'timestamp': time.time()})
-                                print('Session {}: Answer updated'.format(session_id))
+                                app.logger.info('Session {}: Answer updated'.format(session_id))
                 else:
                     sem.release()   # release the lock on the semaphore
         else:
             sem.release()   # release the lock on the semaphore
 
     def watchSocketStatus(message, models):
-        # print('socket-status - message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
+        # app.logger.debug('socket-status - message : {} - {}'.format(message, eventlet.corolocal.get_ident()))
         sem.acquire()   # acquire the lock on the semaphore
         if message is not None and message['container_id'] is not None and isinstance(message['container_id'], int) and message['container_id'] not in SocketStatusIterator:
             SocketStatusIterator[message['container_id']] = True
@@ -511,14 +510,14 @@ def create_app():
                     ts = models.Session.query.get(message['container_id'])
                     if ts is not None and ts.container_id != "null":
                         if ts.running == True:         # check if the session is running
-                            # print('socket-status - starting: {} - Port: {}'.format(message['container_id'], ts.port))
+                            app.logger.debug('socket-status - starting: {} - Port: {}'.format(message['container_id'], ts.port))
                             try:
                                 container_instance = docker_client.containers.get(ts.container_id)                 # fetch the docker container status
                                 port_assigned = container_instance.ports['9090/tcp'][0]['HostPort']                 # fetch port number
 
                                 # check the port number with db port mapped
                                 if int(port_assigned) != ts.port:
-                                    print('socket-status - port not matching: {} - Port: {}'.format(message['container_id'], ts.port))
+                                    app.logger.info('socket-status - port not matching: {} - Port: {}'.format(message['container_id'], ts.port))
                                     ts.port = int(port_assigned)
                                     db.session.add(ts)
                                     db.session.commit()
@@ -535,9 +534,9 @@ def create_app():
                             except socket.error as e:
                                 currentStatusFlag = True    # connection failed
                                 if(e.errno == 60):
-                                    print("Error socket timeout: ", e)
+                                    app.logger.info("Error socket timeout: ", e)
                                 else:
-                                    print("Issue: ", e)
+                                    app.logger.info("Issue: ", e)
                             
                             # change in status
                             if currentStatusFlag == True and ts.error == False:
@@ -550,11 +549,11 @@ def create_app():
                                 ts.status = ""
                                 db.session.add(ts)
                                 db.session.commit()
-                            # print('socket-status - completed loop: {} - Port: {}'.format(message['container_id'], ts.port))
+                            app.logger.debug('socket-status - completed loop: {} - Port: {}'.format(message['container_id'], ts.port))
                         else:
-                            print('socket-status - skipping: {} - Port: {}'.format(message['container_id'], ts.port))
+                            app.logger.info('socket-status - skipping: {} - Port: {}'.format(message['container_id'], ts.port))
                     else:
-                        print('socket-status - stopping: {} - Port: {}'.format(message['container_id'], ts.port))
+                        app.logger.info('socket-status - stopping: {} - Port: {}'.format(message['container_id'], ts.port))
                         break
                     eventlet.sleep(seconds=60)
         else:
@@ -566,7 +565,7 @@ def create_app():
 
     @socketio.on('disconnect')
     def test_disconnect():
-        print('Client disconnected')
+        app.logger.info('Client disconnected')
 
     with app.test_request_context():
         spec.path(view=createTeam)
