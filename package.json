@@ -1,13 +1,13 @@
 {
-  "name": "flask-react-boilerplate",
+  "name": "ctf-app",
   "version": "0.1.0",
-  "author": "Yale DH Lab",
-  "license": "MIT",
-  "description": "Minimal boilerplate for a Flask + React application",
+  "author": "",
+  "license": "",
+  "description": "",
   "main": "server/server.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/duhaime/react-boilerplate.git"
+    "url": "git+https://github.com/seed-labs/ctf-app.git"
   },
   "scripts": {
     "start": "webpack-dev-server --port 7081 --history-api-fallback --mode=development --hot --host 0.0.0.0",
